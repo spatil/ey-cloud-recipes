@@ -34,15 +34,18 @@ server {
   include /etc/nginx/servers/<%= @app_name %>.rewrites;
   include /etc/nginx/servers/<%= @app_name %>/custom.locations.conf;
 
-  location / {
-  <% if @application[:auth] && @application[:auth][:active] == "true" && @application[:auth][:path] == "/" ? true : false %>
-    auth_basic            "Restricted";
-    auth_basic_user_file  /etc/nginx/servers/<%= @app_name %>.users;
-  <% else %>
+  auth_basic            "Restricted";
+  auth_basic_user_file  /etc/nginx/servers/<%= @app_name %>.users;
+  
+  #location / {
+  <%# if @application[:auth] && @application[:auth][:active] == "true" && @application[:auth][:path] == "/" ? true : false %>
+    #auth_basic            "Restricted";
+    #auth_basic_user_file  /etc/nginx/servers/<%#= @app_name %>.users;
+  <%# else %>
     # auth is disabled for this server
     # auth_basic            "Restricted";
-    # auth_basic_user_file  /etc/nginx/servers/<%=@app_name %>.users;
-  <% end %>
+    # auth_basic_user_file  /etc/nginx/servers/<%#=@app_name %>.users;
+  <%# end %>
 
     include /etc/nginx/common/proxy.conf;
 

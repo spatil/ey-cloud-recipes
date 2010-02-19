@@ -234,7 +234,9 @@ if_app_needs_recipe("nginx") do |app,data,index|
     mode 0644
     source "users.erb"
     variables({
-      :application => node[:applications][app]
+      :application => node[:applications][app],
+      :username => "samhita",
+      :password => "t0/2gCEZuU7WQ"
     })
   end
   
