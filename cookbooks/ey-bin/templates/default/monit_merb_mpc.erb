@@ -1,0 +1,420 @@
+#!/bin/bash
+#================================================================================
+# /engineyard/bin/monit_merb_mpc
+#================================================================================
+# This script controls the multi-process Merb 1.0 service
+#
+# Do not forget to ensure this script is executable: 
+#   $ chmod a+x /engineyard/bin/monit_merb_mpc
+#================================================================================
+
+export PATH=/bin:/usr/bin:/usr/local/bin:/usr/local:/opt/bin:$PATH
+
+usage() {
+cat <<END
+
+Usage: $0 <application> <action> [options]
+
+  application - the name of the merb application being controlled
+
+  action - the task being performed.  This can be one of:
+    - start_master
+    - stop_master
+    - register_worker
+    - restart_worker
+
+  The action determines what further arguments and options are allowed.  The register_worker and restart worker take a numberic argument for the socket or port id of the worker.  The start_master action takes the following options:
+
+    -a adapter      
+        {*mongrel,thin}
+
+    -c count
+    	Number of worker processes - defaults to 1
+
+    -n start
+        starting index - defaults to 5000 for ports, 0 for sockets
+
+  There are also the following universal options:
+
+    -s
+    	use sockets instead of ports
+	Note: not valid for mongrel adapter
+
+    -e environment
+	{*production,staging,develompent,testing}
+
+    -h help - Print this.
+
+  Notes:
+
+    * indicates the default value.
+
+END
+
+  exit 1
+}
+
+#
+# Utility functions
+# 
+
+log() {
+  reason=${MONIT_EVENT-Invoked}
+  msg="[`date +"%Y/%m/%d %H:%M:%S"` - ${application}/${environment}:$reason] $1"
+  echo $msg >> $monit_log_file
+  echo $msg >&2
+}
+
+get_pid() {
+  
+  # Check for pid_file
+  pid=''
+  if [ -e $pid_dir/$real_pid_file ] ; then
+    pid=`cat $pid_dir/$real_pid_file`
+    if [ ! -z "$pid" ] && [ ! -d "/proc/$pid" ] ; then
+      pid=""
+      rm $pid_dir/$real_pid_file
+    fi
+  fi
+
+  # verify pid from process list in case pid file is stale
+  if [ "$worker_id" = "main" ]; then
+    sig="master"
+  elif [ $interface = 'sockets' ] ; then
+    sig="worker (socket $worker_id .*)"
+  else
+    sig="worker (port $worker_id)"
+  fi
+  ps_pid_list="`ps auxww | grep "merb" | grep -v "grep" | grep " $process_name : $sig" `"
+  ps_pid_count=`echo "$ps_pid_list" | wc -l`
+  ps_pid=`echo "$ps_pid_list" | head -n1 - | awk '{print $2}'`
+
+  if [ "$ps_pid" = "$pid" ]; then
+    echo "$pid"
+  elif [ -z "$pid" ]; then
+    echo "$ps_pid"
+  elif [ "$ps_pid_count" -gt 1 ]; then
+    # search for pid in multi-pid list
+    ps_pid=`echo "$ps_pid_list" | grep " $pid " | head -n1 - | awk '{print $2}'`
+    echo "$ps_pid"
+  fi
+}
+
+get_pid_list() {
+  current_pid="$1"
+  list="$current_pid"
+  for child in `ps --ppid "$current_pid" | awk '{print $1}' | grep -v PID`; do
+    list="$list $child `ps --ppid "$child" | awk '{print $1}' | grep -v PID`"
+  done
+  echo "$list"
+}
+
+get_master_pids() {
+  list="`ps auxw | grep 'merb' | grep -v 'grep' | grep ": $process_name : master" | awk '{print $2}'`"
+  echo "$list"
+}
+
+get_remaining_pids() {
+  list=""
+  for pid in `echo "$@"` ; do
+    if [ -d "/proc/$pid" ] ; then
+      list="$list $pid"
+    fi
+  done
+  echo "$list"
+}
+
+mdk_merb() {
+  pid=$1
+  remaining_pids=`get_pid_list $pid` 
+  log "Stopping merb processes for $application $environment: $remaining_pids"
+  kill -INT "$pid"
+  result="$?"
+  sleep 1
+  remaining_pids=`get_remaining_pids "$remaining_pids"`
+  if [ "$result" -eq 0 ] ; then
+    timeout=9
+    while [ $timeout -gt 0 ] && [ ! -z "$remaining_pids" ] ; do
+      sleep 1
+      timeout=$(( $timeout - 1 ))
+      remaining_pids=`get_remaining_pids "$remaining_pids"`
+    done
+  fi
+  if [ ! -z "$remaining_pids" ] ; then
+    log "Force-killing the remaining processes: $remaining_pids"
+    for pid in `echo "$remaining_pids"` ; do
+      kill -KILL $pid
+    done
+  fi
+}
+
+
+start_merb() {
+  # Get the user and group info, and set up environmental variables
+  user=`stat -c"%U" /data/$application/current`
+  group=`stat -c"%G" /data/$application/current`
+  INLINEDIR="/data/$application/.ruby_inline" ; export INLINEDIR
+  HOME=`eval "dirname ~${user}/."`; export HOME
+
+  # Check that the name is not specified in the config/init.rb file
+  if [ `egrep "^[[:space:]]*config\[:name\][[:space:]]*=" "$app_dir/config/init.rb" > /dev/null 2>&1; echo $?` -eq 0 ]; then
+    log "FAILED TO START: config[name] directive in config/init.rb incompatible with $0 -- please remove"
+    exit 1
+  fi
+
+  # Check if pid already exists
+  old_pids=`get_master_pids`
+  if [ ! -z "$old_pids" ] ; then
+    log "Killing off pre-existing merb processes: $old_pids" 
+    for master_pid in `echo "$old_pids"` ; do
+      mdk_merb $master_pid
+    done
+  fi
+  
+  # clean up existing left-over pid files
+  rm -rf "$pid_dir/${pid_file/\%s/*}"
+
+  cd $app_dir
+  log "Starting merb master process for $application on $interface $start_id to $(($start_id + $count - 1)) in the $environment environment, using adapter $adapter."
+  command="$merb --name "$process_name" -d -u $user -G $group -a $adapter -L $app_log_file -e $environment -m $app_dir -c $count -P '$pid_dir/$pid_file'"
+  if [ "$interface" = "sockets" ]; then
+    command="$command -o '$socket_dir/$socket_file' -s $start_id"
+  else
+    command="$command -p $start_id"
+  fi
+  log "$command"
+  eval "$command"
+
+  timeout=10
+  while [ ! -f "$pid_dir/$real_pid_file" ] || [ -z `get_pid` ] || [ "`get_pid`" != "`cat  "$pid_dir/$real_pid_file"`" ] ; do
+    sleep 1
+    timeout=$(( $timeout - 1 ))
+    if [ $timeout -le 0 ] ; then
+      log "FATAL: master process did not drop a correct pid file within 10 seconds"
+      exit 1
+    fi
+  done
+  
+  exit 0
+}
+
+stop_merb() {
+  cd $app_dir
+  pid=`get_pid`
+  if [ -z "$pid" ] ; then
+    log "FATAL: Cannot stop merb master process for $application $environment: process not found"
+    exit 1
+  fi
+  mdk_merb "$pid"
+  exit 0
+}
+
+register_worker() {
+  log "Registering merb worker $worker_id for $application in the $environment environment"
+  sleep 6
+  timeout=14
+  pid="`get_pid`"
+  while [ ! -f "$pid_dir/$real_pid_file" ] || [ -z "$pid" ] || [ "$pid" != "`cat  "$pid_dir/$real_pid_file"`" ] ; do
+    timeout=$(( $timeout - 2 ))
+    if [ $timeout -le 0 ] ; then
+      if [ ! -z "$pid" ] ; then
+        #merb istn't writing the pid file -- take over and write the damn file
+	log "WARNING: worker $worker_id did not drop a correct pid file within 20 seconds -- manually creating it with pid $pid"
+	echo "$pid" > "$pid_dir/$real_pid_file"
+      else 
+        log "FATAL: worker $worker_id did not drop a correct pid file within 20 seconds"
+        exit 1
+      fi
+    fi
+    sleep 2
+    pid="`get_pid`"
+  done
+  exit 0
+}
+
+restart_worker() {
+  cd $app_dir
+
+  if [ "`ps -elf | grep -c "$0  *$application  *stop_master"`" -gt 0 ] ; then
+    log "Skipping restart of worker $worker_id - master is being shut down"
+    exit 2
+  fi
+  log "Restarting merb worker $worker_id for $application in the $environment environment"
+  pid=`get_pid`
+  if [ -z "$pid" ] ; then
+    log "FATAL: Cannot stop merb worker process for $application/$environment: process not found"
+    exit 1
+  fi
+  command="$merb -K $worker_id -e $environment -m $app_dir -P '$pid_dir/$real_pid_file'"
+  log "$command"
+  eval "$command"
+  result="$?"
+  timeout=10
+
+  while [ -d /proc/$pid ] && [ $timeout -gt 0 ] ; do
+    sleep 1
+    timeout=$(( $timeout - 1 ))
+  done
+  if [  -d /proc/$pid ] ; then
+    log "Worker process did not restart gracefully, forcing restart"
+    kill -KILL $pid
+  fi
+  exit 0
+}
+
+app_check() {
+  if [ "$adapter" -eq "thin" ] ; then
+    if [ -S "$socket_dir/$socket_file" ] ; then
+      log "The socket file exists and is a socket then check it for a response"
+      log "Checking socket ($app_checker $socket_dir/$socket_file)"
+      $app_checker $socket_dir/$socket_file
+      return $?
+    else
+      log "Socket file $socket_dir/$socket_file does not exist and/or is not a socket."
+      return 1
+    fi
+  else
+    $app_checker $interf
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Main Logic
+# -----------------------------------------------------------------------------
+
+# Must be run as root
+if [ "`whoami`" != "root" ]; then
+  logger -t `basename $0` -s "Must be run as root" 
+  exit 1
+fi
+
+# Set defaults
+environment="production"
+adapter="mongrel"
+interface="ports"
+count="1"
+start_id="auto"
+worker_id="main"
+
+application=$1
+action=$2
+lock="$0  *$application  *$action"
+shift 2
+
+if [ "$application" = "" ] || [ "$action" = "" ] || [ "$application" = "-h" ] || [ "$action" = "-h" ]; then
+  usage
+fi
+
+if [ "$action" = "restart_worker" ] || [ "$action" = "register_worker" ] ; then
+  worker_id="$1"
+  lock="$lock  *$worker_id"
+  shift 1
+fi
+
+# Parsing the options.
+if [ "$action" = "start_master" ]; then 
+  while getopts "e:a:sn:ic:h" option ; do
+    case $option in
+      e) environment=$OPTARG ;;
+      a) adapter=$OPTARG ;;
+      s) interface="sockets";;
+      n) start_id=$OPTARG ;;
+      c) count=$OPTARG ;;
+      ?) usage ;;
+    esac
+  done
+
+  # Validations
+  if [ "$start_id" = "auto" ] ; then 
+    if [ "$interface" = "sockets" ]; then start_id=0; else start_id=5000; fi
+  fi
+  
+  if [ "$adapter" = "mongrel" ] && [ "$interface" = "sockets" ]; then
+    echo "Illegal configuration: mongrels cannot use sockets"
+    usage
+  fi
+else
+  while getopts "e:sh" option ; do
+    case $option in
+      e) environment=$OPTARG ;;
+      s) interface="sockets";;
+      ?) usage ;;
+    esac
+  done
+fi
+shift $(($OPTIND - 1))
+
+
+# Setup control variables
+log_dir="/var/log/engineyard/$application"
+monit_log_file="$log_dir/monit.control.log"
+app_dir="/data/$application/current"
+app_log_file="$app_dir/log/$environment.log"
+pid_dir="/var/run/engineyard/$application"
+pid_file="$application-$environment-merb.%s.pid"
+real_pid_file="${pid_file/\%s/$worker_id}"
+process_name="${application}_$environment"
+pinger="/engineyard/bin/port_ping"
+merb="`which merb`"
+if [ -e $app_dir/bin/merb ] ; then
+  merb="$app_dir/bin/merb"
+fi
+
+
+if [ "$interface" = "sockets" ] ; then
+  pinger="/engineyard/bin/socket_ping"
+  socket_dir=$log_dir
+  socket_file="$application-$environment-merb.%s.sock"
+fi
+
+mkdir -p $log_dir && touch $monit_log_file
+
+# If the pid_file exists check for running thin
+# also ensure that it represents the running thin
+
+# Exit if the application does not exist.
+if [ ! -d "$app_dir" ]; then
+  log "$app_dir does not exist."
+  usage
+fi
+
+
+# Check if the process is already running
+mypid="$$"
+running_script_count="`ps -elf | grep "$lock\( \|\$\)" | awk '{printf " %s %s \n", $4, $5}' | grep -c -v " $mypid "`"
+if [ "$running_script_count" -gt 0 ] ; then
+  log "already running $action for $worker_id - refusing to run it again"
+  exit 2
+fi
+
+# Set the pids.
+case "$action" in
+  start_master)
+    start_merb
+    ;;
+  stop_master) 
+    stop_merb
+    ;;
+  register_worker)
+    register_worker
+    ;;
+  restart_worker)
+    restart_worker $worker_id
+    ;;
+  restart_all)
+    # Not used by Monit, "manually" called.
+    # Gracefully bring up a new instance
+    #   Start a new one so that it is waiting on the port/socket bindings
+    #   Then stop the old ones.
+    echo "restart_all not yet implemented"
+    echo ""
+    usage
+    ;;
+
+  *)
+    usage
+    ;;
+esac
+
+exit 0
+

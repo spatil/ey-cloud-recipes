@@ -1,0 +1,77 @@
+#!/bin/sh
+#
+# This script starts and stops the Dj daemon
+# This script belongs in /engineyard/bin/dj
+#
+PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:$PATH
+CURDIR=`pwd`
+
+usage() {
+  echo "Usage: $0 <appname> {start|stop} enviroment [name maximum_priority minimum_priority]"
+  exit 1
+}
+
+if [ $# -lt 3 ]; then usage; fi
+
+if [ $4 ]; then
+  NAME="_$4"
+
+  if [ $5 ]; then
+    OPTIONS=":max_priority => $5"
+    if [ $6 ]; then
+      OPTIONS="$OPTIONS, :min_priority => $6"
+    fi
+    OPTIONS="{$OPTIONS}"
+  fi
+fi
+
+if [ "`whoami`" != "root" ]; then
+  logger -t `basename $0` -s "Must be run as root" 
+  exit 1
+fi
+
+COMMAND="/data/$1/current/script/runner -e $3 'Delayed::Worker.new($OPTIONS).start'"
+PID_FILE=/var/run/engineyard/dj/$1/dj$NAME.pid
+
+
+if [ -d /data/$1/current ]; then
+  RAIL_ROOT=/data/$1/current
+  USER=`stat -c"%U" /data/$1/current`
+  HOME="/home/$USER" ; export HOME
+
+  cd /data/$1/current
+  mkdir -p /var/run/engineyard/dj/$1
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      cd /data/$1/current
+      echo "Starting Dj worker"
+      if [ -f $PID_FILE ]; then
+        PID=`cat $PID_FILE`
+        if [ -d /proc/$PID ]; then
+          echo "Dj worker is already running."
+          exit 1
+        fi
+        rm -f $PID_FILE
+      fi
+      echo $$ > $PID_FILE;
+      exec 2<&1 su -c"$COMMAND" $USER
+      ;;
+    stop)
+      echo "Stopping Dj worker"
+      if [ -f $PID_FILE ]; then
+        kill -15 `cat $PID_FILE` 2>/dev/null; true
+      fi
+
+      [ -e "$PIDFILE" ] && rm -f $PIDFILE
+      ;;
+    *)
+      usage
+      ;;
+        esac
+else
+  echo "/data/$1/current doesn't exist."
+  usage
+fi
+cd $CURDIR

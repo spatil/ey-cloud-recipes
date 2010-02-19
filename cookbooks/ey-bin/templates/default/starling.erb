@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# This script starts and stops the Starling server
+# This script belongs in /engineyard/bin/starling
+CURDIR=`pwd`
+PATH=/usr/local/bin:$PATH
+#RUBYOPT="-rauto_gem"; export RUBYOPT
+RAILS_ENV=<%= @rails_env %>; export RAILS_ENV
+HOST=`hostname`;
+PID_FILE=/var/run/starling/$1.pid;
+
+usage() {
+  echo "Usage: $0 <appname> {start, stop}"
+  exit 1
+}
+
+if [ $# -lt 2 ]; then usage; fi
+
+if [ -d /data/$1/current ]; then
+  cd /data/$1/current
+
+  # source a starling.conf file if people need to override RAILS_ENV etc
+  if [ -f /data/$1/shared/config/starling.conf ]; then
+    . /data/$1/shared/config/starling.conf
+  fi
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      cd /data/$1/current
+      echo "Starting Starling server."
+      if [ -f $PID_FILE ]; then
+        PID=`cat $PID_FILE`
+        if [ -d /proc/$PID ]; then
+          echo "Starling is already running yo!"
+          exit 0
+        fi
+        rm -f $PID_FILE
+      fi
+      /usr/bin/ruby18 /usr/bin/starling -h $HOST -d -P $PID_FILE
+      ;;
+    stop)
+      echo "Stopping Starling server."
+      if [ -f $PID_FILE ]; then
+        PID=`cat $PID_FILE`
+        if [ -d /proc/$PID ]; then
+          kill -9 $PID >/dev/null 2>&1
+        fi
+	rm $PID_FILE
+      fi
+      ;;
+    *)
+      usage
+      ;;
+  esac
+else
+  echo "/data/$1/current doesn't exist."
+  usage
+fi
+cd $CURDIR

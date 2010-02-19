@@ -5,23 +5,22 @@ defaults:
   c_threshold: 10000
   compression: true
   debug: false
-  namespace: <%= @app_name %>
-  sessions: false
-  session_servers: false
+  namespace: "<%= @app_name %>"
+  sessions: true
   fragments: true
-  memory: 64
-  servers: localhost:11211
+  memory: <%= @memcached_mem_limit %>
+  servers:
+    <%- if @backends.empty? -%>
+    - <%= @node[:fqdn] %>:<%= @memcached_base_port %>
+    <%- else -%>
+      <%- @backends.each do |backend| -%>
+      - <%= backend %>:<%= @memcached_base_port %>
+      <%- end -%>
+    <%- end -%>
   benchmarking: true
   raise_errors: true
   fast_hash: false
   fastest_hash: false
 
 <%= @node[:environment][:framework_env] %>:
-  memory: 64
   benchmarking: false
-  sessions: false
-  fragments: true
-  <% unless @server_names.nil? %>
-  servers:
-  - <%= @server_names.join(":11211\n  - ") %>:11211
-  <% end %>

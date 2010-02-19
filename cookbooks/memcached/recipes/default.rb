@@ -1,32 +1,57 @@
-require 'pp'
 #
 # Cookbook Name:: memcached
 # Recipe:: default
 #
+# Copyright 2008, Engine Yard, Inc.
+#
+# All rights reserved - Do Not Redistribute
+#
 
-node[:applications].each do |app_name,data|
-  user = node[:users].first
+if any_app_needs_recipe?("memcached")
+  
+  ey_cloud_report "memcached" do
+    message "processing memcached"
+  end
 
-case node[:instance_role]
- when "solo", "app", "app_master"
-   template "/data/#{app_name}/shared/config/memcached_custom.yml" do
-     source "memcached.yml.erb"
-     owner user[:username]
-     group user[:username]
-     mode 0744
-     variables({
-         :app_name => app_name,
-         :server_names => node[:members]
-     })
-   end
+  require_recipe "monit"
 
-   template "/etc/conf.d/memcached" do
-     owner 'root'
-     group 'root'
-     mode 0644
-     source "memcached.erb"
-     variables :memusage => 64,
-               :port     => 11211
-   end
- end
+  package "memcached" do
+    action :install
+  end
+
+end
+
+if_app_needs_recipe("memcached") do |app,data,index|
+
+
+  memcached_service = find_app_service(app, "memcached")
+  
+  template "/etc/conf.d/memcached" do
+    owner "root"
+    group "root"
+    mode 0644   
+    variables({
+      :app_name => app,
+      :memcached_mem_limit => memcached_service[:mem_limit],
+      :memcached_base_port => memcached_service[:base_port]
+    })
+    source "memcached.conf.erb"
+    action :create_if_missing
+  end
+  
+  template "/data/#{app}/shared/config/memcached.yml" do
+    owner node[:owner_name]
+    group node[:owner_name]
+    mode 0644   
+    variables({
+      :app_name => app,
+      :backends => node[:members] || ['127.0.0.1'],
+      :memcached_mem_limit => memcached_service[:mem_limit],
+      :memcached_base_port => memcached_service[:base_port]
+    })
+    source "memcached.yml.erb"
+  end
+  
+  monitrc "memcached", :memcached_base_port => memcached_service[:base_port]
+
 end

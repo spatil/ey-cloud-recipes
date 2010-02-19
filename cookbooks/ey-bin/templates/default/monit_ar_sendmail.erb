@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# This script starts and stops the AR_mailer ar_sendmail daemon
+# This script belongs in /engineyard/bin/monit_ar_sendmail
+#
+CURDIR=`pwd`
+PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:$PATH
+COMMAND=/usr/bin/ar_sendmail
+RAILS_ROOT=/data/$1/current
+
+PID_FILE=/var/run/engineyard/ar_mailer/$1/ar_sendmail.pid
+EXEC_LOG_FILE=/var/log/engineyard/ar_mailer/wrapper_$1.log
+
+#Defaults - Can be overridden in /data/appname/shared/config/ar_mailer.conf
+AR_DELAY=60
+AR_BATCH_SIZE=100
+AR_MAX_AGE=0
+
+usage() {
+  echo "Usage: $0 <appname> {start|stop} enviroment"
+  exit 1
+}
+
+if [ $# -lt 3 ]; then usage; fi
+
+if [ -d $RAILS_ROOT ]; then
+  mkdir -p /var/log/engineyard/ar_mailer/$1
+  mkdir -p /var/run/engineyard/ar_mailer/$1
+
+  # source a ar_mailer.conf file if people need to override RAILS_ENV etc
+  if [ -f /data/$1/shared/config/ar_mailer.conf ]; then
+    . /data/$1/shared/config/ar_mailer.conf
+  fi
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      cd $RAILS_ROOT
+      echo "Starting AR_mailer daemon"
+      if [ -f $PID_FILE ]; then
+        PID=`cat $PID_FILE`
+        if [ -d /proc/$PID ]; then
+          echo "AR_mailer is already running."
+          exit 1
+        fi
+        rm -f $PID_FILE
+      fi
+      echo $$ > $PID_FILE;
+      exec $COMMAND -b $AR_BATCH_SIZE --max-age $AR_MAX_AGE --delay $AR_DELAY -c $RAILS_ROOT -e $3 -v 1>$EXEC_LOG_FILE 2>&1 
+      ;;
+    stop)
+      echo "Stopping AR_mailer daemon."
+      if [ -f $PID_FILE ]; then
+        kill -9 `cat $PID_FILE` 2>/dev/null; true
+        rm $PID_FILE
+      fi
+      ;;
+    *)
+      usage
+      ;;
+        esac
+else
+  echo "$RAILS_ROOT doesn't exist."
+  usage
+fi
+cd $CURDIR

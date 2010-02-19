@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+APP=$1
+TASK=$2
+RAILS_ENV=$3
+COMMAND=$4
+
+RAILS_ROOT=/data/${APP}/current
+LOG_FILE=${RAILS_ROOT}/log/${TASK}.log
+
+cd ${RAILS_ROOT} || (echo "Couldn't chdir to ${RAILS_ROOT}" >&2; exit 255)
+
+output() {
+	echo "["`date`"] [${TASK}]: $1" >> ${LOG_FILE}
+}
+
+export RAILS_ENV
+${COMMAND} |tee -a ${LOG_FILE} >${LOG_FILE}.out 2> ${LOG_FILE}.err
+
+RET=$?
+
+if [ ${RET} -eq 0 ]; then
+	output "completed successfully"
+	exit 0
+else
+	output "failed with ${RET}"
+	echo "error occurred: ${RET}" >&2
+	echo "STDOUT: " >&2
+	cat ${LOG_FILE}.out >&2
+	echo "STDERR: " >&2
+	cat ${LOG_FILE}.err >&2
+	exit ${RET}
+fi

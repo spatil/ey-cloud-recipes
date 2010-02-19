@@ -1,0 +1,73 @@
+#!/bin/sh
+# This script starts and stops the searchd
+# This script belongs in /engineyard/bin/searchd
+###############################################################################
+PATH=/usr/local/bin:$PATH
+
+###############################################################################
+reset_everything() {
+  echo "Resetting everything, this might take a minute"
+#  kill -9 `ps auwwx | grep -v grep | grep $CONFIGFILE | awk '{print $2}'` >> $OUTPUT 2>&1
+  pkill -9 -f "searchd --config $CONFIGFILE" >> $OUTPUT 2>&1
+  mkdir -p $LOGBASE/indexes >> $OUTPUT 2>&1
+  rm -f $LOGBASE/indexes/* >> $OUTPUT 2>&1
+  indexer --all --config $CONFIGFILE >> $OUTPUT 2>&1
+  searchd --config $CONFIGFILE >> $OUTPUT 2>&1
+}
+
+usage() {
+  echo "Usage: $0 <appname> {start, stop, reindex, just_get_me_going}"
+  exit 1
+}
+
+if [ $# -lt 2 ]; then usage; fi
+
+###############################################################################
+LOGBASE=/var/log/engineyard/sphinx/$1
+PIDFILE=/var/run/sphinx/$1/searchd.pid
+CONFIGFILE=/data/$1/shared/config/sphinx.conf
+OUTPUT=$LOGBASE/searchd.log
+
+###############################################################################
+if [ -d /data/$1/current ]; then
+	mkdir -p $LOGBASE
+  cd /data/$1/current
+  if [ ! -f $CONFIGFILE ]; then
+	  echo "$CONFIGFILE doesn't exist! Exiting" >> $OUTPUT 2>&1
+	fi
+	
+  # source a backgroundrb.conf file if people need to override RAILS_ENV etc
+  if [ -f /data/$1/shared/config/searchd.conf ]; then
+    . /data/$1/shared/config/searchd.conf
+  fi
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      echo "Starting searchd"
+      searchd --config $CONFIGFILE >> $OUTPUT 2>&1
+      if [ $? != '0' ]; then reset_everything; fi
+      ;;
+    stop)
+      echo "Stopping searchd"
+      if [ -f $PIDFILE ]; then
+        kill -9 `cat $PIDFILE` >> $OUTPUT 2>&1
+        rm -f $PIDFILE >> $OUTPUT 2>&1
+      fi
+      ;;
+    reindex)
+      echo "Reindexing your searchd indexes against the live server"
+      indexer --all --rotate --config $CONFIGFILE >> $OUTPUT 2>&1
+      ;;
+    just_get_me_going)
+      reset_everything
+      ;;
+    *)
+      usage
+      ;;
+	esac
+else
+  echo "/data/$1/current doesn't exist."
+  usage
+fi
+cd $CURDIR

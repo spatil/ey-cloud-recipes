@@ -1,0 +1,41 @@
+#!/usr/bin/ruby
+
+# Example:
+# $ ./thin_check /var/run/thin.4.sock 
+#HTTP/1.1 200 OK
+#Content-Type: text/html; charset=UTF-8
+#Cache-Control: no-cache
+#Content-Length: 138
+#Set-Cookie: _session_id=5a652a96986137b6abc222a0879d8c67; path=/
+#Connection: keep-alive
+#Server: thin 0.7.0 codename Spherical Cow
+
+#!/usr/bin/ruby
+require "socket"
+require "timeout"
+
+sock_file = ARGV.shift
+timeout = ARGV.first.nil? ? 10 : ARGV.shift
+
+unless File.exist?(sock_file.to_s)
+  puts "Socket file '#{sock_file}' does not exist." 
+	exit 1
+end
+
+begin
+  seconds_taken = Timeout::timeout(timeout) {
+    sock = UNIXSocket.open(sock_file)
+    sock.send("HEAD / HTTP/1.1\r\n\r\n", 0)
+    response = sock.readline#.recvfrom(255)
+    response_code = response.scan(/HTTP\/1.1\s+(\d+)/)
+    sock.close
+    puts response_code
+    exit 0
+  }
+rescue Timeout::Error
+  puts "Socket timed out"
+  exit 1
+rescue Errno::ECONNREFUSED
+	puts "Socket Connection Refused"
+	exit 1
+end

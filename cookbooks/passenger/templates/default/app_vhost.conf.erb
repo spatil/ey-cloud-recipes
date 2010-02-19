@@ -1,0 +1,18 @@
+<VirtualHost *:<%= @http_bind_port %>>
+  ServerName <%= @domain %>  
+  DocumentRoot <%= @docroot %>
+  <% if @app_type == 'rails' %>
+  RailsBaseURI /
+  PassengerPoolIdleTime 3600
+  RailsEnv '<%= @node[:environment][:framework_env] %>'
+  <% else %>
+  RackEnv '<%= @node[:environment][:framework_env] %>'
+  <% end %>
+  <Directory <%= @docroot %>>
+    ErrorDocument 500 /500.html
+    Options FollowSymLinks
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+  </Directory>
+</VirtualHost>

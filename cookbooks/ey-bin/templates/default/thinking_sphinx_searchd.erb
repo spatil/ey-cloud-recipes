@@ -1,0 +1,57 @@
+#!/bin/sh
+# This script starts and stops the searchd
+# This script belongs in /engineyard/bin/searchd
+###############################################################################
+export PATH=/usr/local/bin:/usr/bin:/bin:/opt/bin:/usr/x86_64-pc-linux-gnu/gcc-bin/4.1.2
+export RAILS_ENV=<%= @rails_env %>
+###############################################################################
+
+usage() {
+  echo "Usage: $0 <appname> {start, stop, configure, reindex}"
+  exit 1
+}
+
+if [ $# -lt 2 ]; then usage; fi
+
+###############################################################################
+LOGBASE=/var/log/engineyard/sphinx/$1
+PIDFILE=/var/run/sphinx/$1.pid
+CONFIGFILE=/data/$1/shared/config/sphinx.yml
+OUTPUT=$LOGBASE/searchd.log
+###############################################################################
+
+if [ -d /data/$1/current ]; then
+
+  cd /data/$1/current
+
+  if [ ! -f $CONFIGFILE ]; then
+          echo "$CONFIGFILE doesn't exist! Exiting" >> $OUTPUT 2>&1
+  fi
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      echo "Starting searchd"
+      rake thinking_sphinx:start >> $OUTPUT 2>&1
+      ;;
+    stop)
+      echo "Stopping searchd"
+      rake thinking_sphinx:stop >> $OUTPUT 2>&1
+      ;;
+    configure)
+      echo "Configuring your searchd indexes"
+      rake thinking_sphinx:configure >> $OUTPUT 2>&1
+      ;;
+    reindex)
+      echo "Reindexing your searchd indexes against the live server"
+      rake thinking_sphinx:index >> $OUTPUT 2>&1
+      ;;
+    *)
+      usage
+      ;;
+      esac
+else
+  echo "/data/$1/current doesn't exist."
+  usage
+fi
+

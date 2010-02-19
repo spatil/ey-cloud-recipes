@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+# This script starts and stops the Ferret DRb server
+# This script belongs in /engineyard/bin/ferret
+CURDIR=`pwd`
+PATH=/usr/local/bin:$PATH
+FERRET_USE_LOCAL_INDEX=1; export FERRET_USE_LOCAL_INDEX
+RAILS_ENV=<%= @rails_env %>; export RAILS_ENV
+
+usage() {
+  echo "Usage: $0 <appname> {start, stop}"
+  exit 1
+}
+
+if [ $# -lt 2 ]; then usage; fi
+
+if [ -d /data/$1/current ]; then
+  cd /data/$1/current
+  mkdir -p /var/log/engineyard/ferret/$1
+
+  # source a ferret.conf file if people need to override RAILS_ENV etc
+  if [ -f /data/$1/shared/config/ferret.conf ]; then
+    . /data/$1/shared/config/ferret.conf
+  fi
+
+  # handle the second param, don't start if already existing
+  case "$2" in
+    start)
+      cd /data/$1/current
+      echo "Starting Ferret DRb server."
+      if [ -f /var/run/ferret/$1.pid ]; then
+        PID=`cat /var/run/ferret/$1.pid`
+        if [ ! -d /proc/$PID ]; then
+          rm -f /var/run/ferret/$1.pid
+        fi
+      fi
+      if [ -f script/ferret_server ]; then
+      	FERRET_USE_LOCAL_INDEX=1 script/runner -e $RAILS_ENV vendor/plugins/acts_as_ferret/script/ferret_start
+      elif [ -f script/ferret_start ]; then
+        /usr/bin/ruby script/ferret_start
+        # Use the below line for rails <= 1.1.6        
+        # /usr/bin/ruby script/runner -e production "load 'script/ferret_start'"
+      else
+        echo "Unable to locate the start script in `pwd`/script"
+      fi
+      ;;
+    stop)
+      echo "Stopping Ferret DRb server."
+      if [ -f /var/run/ferret/$1.pid ]; then
+        PID=`cat /var/run/ferret/$1.pid`
+        if [ -f script/ferret_server ]; then
+        	FERRET_USE_LOCAL_INDEX=1 script/runner -e $RAILS_ENV vendor/plugins/acts_as_ferret/script/ferret_stop
+        elif [ -f script/ferret_stop ]; then
+          /usr/bin/ruby script/ferret_stop
+          # Use the below line for rails <= 1.1.6        
+          # /usr/bin/ruby script/runner -e production "load 'script/ferret_stop'"
+        else
+          echo "Unable to locate the stop script in `pwd`/script"
+        fi
+        sleep 10
+        if [ -d /proc/$PID ]; then
+          kill -9 $PID >/dev/null 2>&1
+          pkill -9 ferret_server >/dev/null 2>&1
+        fi
+      fi
+      ;;
+    *)
+      usage
+      ;;
+  esac
+else
+  echo "/data/$1/current doesn't exist."
+  usage
+fi
+cd $CURDIR
