@@ -9,6 +9,8 @@
 require 'pp'
 Chef::Log.info(ENV.pretty_inspect)
 
+require_recipe 'ruby'
+
 if node[:quick]
   case node[:instance_role]
   when 'app', 'app_master'
@@ -106,17 +108,26 @@ else
     recursive true
   end
 
+  # Remove gems that were installed on the system ruby in previous chef runs.
+  # They are now installed in the ey_resin isolated ruby.
   gem_package "ey-flex" do
     action :remove
   end
 
-  execute "reset enzyme commands" do
-    command "gem pristine ey_enzyme"
+  gem_package "ey_enzyme" do
+    action :remove
   end
 
   gem_package "ey_cloud_server" do
-    version "1.0.1"
-    action :install
+    action :remove
+  end
+
+  gem_package "chef" do
+    action :remove
+  end
+
+  gem_package "chef-deploy" do
+    action :remove
   end
 
   # all roles get these recipes
@@ -155,6 +166,7 @@ else
     require_recipe "collectd"
     require_recipe "mongrel"   if mongrel?
     require_recipe "unicorn"   if unicorn?
+    require_recipe "app-logs"
     require_recipe "memcached"
     require_recipe "cron"
     require_recipe "passenger" if passenger?
@@ -170,6 +182,7 @@ else
     require_recipe "collectd"
     require_recipe "mongrel"   if mongrel?
     require_recipe "unicorn"   if unicorn?
+    require_recipe "app-logs"
     require_recipe "memcached"
     require_recipe "cron"
     require_recipe "passenger" if passenger?
@@ -195,6 +208,7 @@ else
     require_recipe "ey-dynamic::rubygems"
     require_recipe "backups"
     require_recipe "ey-application"
+    require_recipe "app-logs"
     require_recipe "deploy-keys"
     require_recipe "collectd"
     require_recipe "cron"

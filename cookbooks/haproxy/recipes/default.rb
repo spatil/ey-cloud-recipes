@@ -39,6 +39,15 @@ if node[:members]
     command "/etc/init.d/haproxy #{command}"
     action :run
   end
+
+  file "/usr/bin/ey-monitor" do
+    action :delete
+    only_if "test -f /usr/bin/ey-monitor"
+  end
+
+  link "/usr/bin/ey-monitor" do
+    to "/usr/local/ey_resin/bin/ey-monitor"
+  end
   
   bash "add-ey-monitor-to-inittab" do
     code <<-EOH

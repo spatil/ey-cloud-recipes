@@ -31,11 +31,6 @@ if any_app_needs_recipe?('mongrel')
     mode 0755
   end
 
-  logrotate "mongrel" do
-    files "/var/log/engineyard/mongrel/*/*.log"
-    copy_then_truncate true
-  end
-
   execute "cleanup monit.d dir" do
     command "rm /etc/monit.d/mongrel*.monitrc
              rm /etc/monit.d/mongrel_merb*.monitrc
@@ -43,18 +38,8 @@ if any_app_needs_recipe?('mongrel')
   end
   
 end
-  
+
 if_app_needs_recipe("mongrel") do |app,data,index|
-  
-  directory "/var/log/engineyard/mongrel/#{app}" do
-    owner node[:owner_name]
-    group node[:owner_name]
-    mode 0755
-  end
-  
-  link "/data/#{app}/shared/log" do
-    to "/var/log/engineyard/mongrel/#{app}" 
-  end
   
   directory "/var/run/mongrel/#{app}" do
     owner node[:owner_name]
@@ -121,10 +106,3 @@ if_app_needs_recipe("mongrel") do |app,data,index|
 
 end
 
-(node[:removed_applications]||[]).each do |app|
-  execute "remove-mongrel-logs-for-#{app}" do
-    command %Q{
-      rm -rf /var/log/engineyard/mongrel/#{app}
-    }
-  end
-end

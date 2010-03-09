@@ -69,11 +69,26 @@ applications_to_deploy.each do |app, data|
     migration_command data[:migration_command]
     action data[:deploy_action]
   end
-  
+
+  if node[:newrelic_key] && data[:newrelic] && File.directory?("/data/#{app}/current/config")
+    ey_cloud_report "newrelic: #{app}" do
+      message "configuring NewRelic RPM for #{app}"
+    end
+
+    template "/data/#{app}/current/config/newrelic.yml" do
+      source "newrelic.yml.erb"
+      env_name = node[:environment][:name]
+      env_framework = node[:environment][:framework_env]
+      variables(
+        :app => "#{env_name} / #{app} (#{env_framework})",
+        :key => node[:newrelic_key]
+      )
+    end
+  end
+
   execute "ensure-permissions-for-#{app}" do
     command "chown -R #{node[:owner_name]}:#{node[:owner_name]} /data/#{app}"
   end
-  
 end
 
 

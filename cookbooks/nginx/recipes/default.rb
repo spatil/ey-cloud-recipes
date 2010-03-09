@@ -12,30 +12,37 @@ if any_app_needs_recipe?("nginx")
   ey_cloud_report "nginx" do
     message "processing nginx"
   end
-  
+
   use_passenger = any_app_needs_recipe?('nginx-passenger')
-  
-  
+
+
   package "nginx" do
     version '0.6.35-r22'
   end
-  
+
   if any_app_needs_recipe?('nginx-passenger')
     ey_cloud_report "nginx-passenger" do
       message "processing nginx-passenger"
     end
-    
+
+    remote_file '/usr/bin/ruby-for-passenger' do
+      owner 'root'
+      group 'root'
+      mode 0755
+      source 'ruby-for-passenger'
+    end
+
     gem_package "fastthread" do
       action :install
     end
   end
-  
-  directory "/var/log/engineyard/nginx" do 
+
+  directory "/var/log/engineyard/nginx" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0775
   end
-  
+
   %w{/data/nginx/servers /data/nginx/common}.each do |dir|
     directory dir do
       owner node[:owner_name]
@@ -45,7 +52,7 @@ if any_app_needs_recipe?("nginx")
     end
   end
 
-  unless File.symlink?("/var/log/nginx") 
+  unless File.symlink?("/var/log/nginx")
     directory "/var/log/nginx" do
       action :delete
       recursive true
@@ -61,7 +68,7 @@ if any_app_needs_recipe?("nginx")
     to "/data/nginx"
   end
 
-  directory "/var/tmp/nginx/client" do 
+  directory "/var/tmp/nginx/client" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0775
@@ -78,21 +85,21 @@ if any_app_needs_recipe?("nginx")
     mode 0755
     source "nginx"
   end
-  
+
   remote_file "/data/nginx/mime.types" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0755
     source "mime.types"
   end
-  
+
   remote_file "/data/nginx/koi-utf" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0755
     source "koi-utf"
   end
-  
+
   remote_file "/data/nginx/koi-win" do
     owner node[:owner_name]
     group node[:owner_name]
@@ -108,7 +115,7 @@ if any_app_needs_recipe?("nginx")
   end
 
   logrotate "nginx" do
-    files "/var/log/engineyard/nginx/*.log"
+    files "/var/log/engineyard/nginx/*.log /var/log/engineyard/nginx/error_log"
     restart_command <<-SH
 [ ! -f /var/run/nginx.pid ] || kill -USR1 `cat /var/run/nginx.pid`
     SH
@@ -122,7 +129,7 @@ if any_app_needs_recipe?("nginx")
         :nofile => 16384
     })
   end
-  
+
   managed_template "/data/nginx/nginx.conf" do
     owner node[:owner_name]
     group node[:owner_name]
@@ -133,7 +140,7 @@ if any_app_needs_recipe?("nginx")
       :pool_size => pool_size
     })
   end
-  
+
   directory "/data/nginx/ssl" do
     owner node[:owner_name]
     group node[:owner_name]
@@ -166,10 +173,10 @@ if any_app_needs_recipe?("nginx")
     group node[:owner_name]
     mode 0644
   end
-  
-  
 
-  # this is for when we finally clean up our graphing stuff anf run it under ssl 
+
+
+  # this is for when we finally clean up our graphing stuff anf run it under ssl
   #template "/data/nginx/servers/minihttpd.ssl.conf" do
   #  owner node[:owner_name]
   #  group node[:owner_name]
@@ -189,37 +196,31 @@ if any_app_needs_recipe?("nginx")
   #  }
   #  creates "/data/nginx/ssl/minihttpd.key"
   #end
-  
+
 end
 
 (node[:removed_applications]||[]).each do |app|
   execute "remove-old-vhosts-for-#{app}" do
     command %Q{
-      rm -rf /var/log/engineyard/nginx/#{app}* && rm -rf /data/nginx/servers/#{app}*
+      rm -rf /data/nginx/servers/#{app}*
     }
   end
 end
 
 if_app_needs_recipe("nginx") do |app,data,index|
-  
-  directory "/var/log/engineyard/nginx/#{app}" do 
+
+  directory "/data/nginx/servers/#{app}" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0775
   end
-  
-  directory "/data/nginx/servers/#{app}" do 
+
+  directory "/data/nginx/servers/#{app}/ssl" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0775
   end
-  
-  directory "/data/nginx/servers/#{app}/ssl" do 
-    owner node[:owner_name]
-    group node[:owner_name]
-    mode 0775
-  end
-  
+
   managed_template "/data/nginx/servers/#{app}.rewrites" do
     owner node[:owner_name]
     group node[:owner_name]
@@ -227,17 +228,17 @@ if_app_needs_recipe("nginx") do |app,data,index|
     source "server.rewrites.erb"
     action :create_if_missing
   end
-  
+
   managed_template "/data/nginx/servers/#{app}.users" do
     owner node[:owner_name]
     group node[:owner_name]
     mode 0644
     source "users.erb"
     variables({
-      :application => node[:applications][app],
+      :application => node[:applications][app]
     })
   end
-  
+
   managed_template "/data/nginx/servers/#{app}/custom.locations.conf" do
     owner node[:owner_name]
     group node[:owner_name]
@@ -245,7 +246,7 @@ if_app_needs_recipe("nginx") do |app,data,index|
     source "custom.locations.conf.erb"
     action :create_if_missing
   end
-  
+
   mongrel_service = find_app_service(app, "mongrel")
   fcgi_service = find_app_service(app, "fcgi")
   mongrel_base_port =  (mongrel_service[:mongrel_base_port].to_i + (index * 1000))
@@ -277,10 +278,10 @@ if_app_needs_recipe("nginx") do |app,data,index|
       :fcgi_instance_count => fcgi_service[:fcgi_instance_count],
     }.merge(node[:members] ? {:http_bind_port => 81} : {}))
   end
-  
+
   # if there is an ssl vhost
   if data[:vhosts][1]
-    
+
     execute "output-ssl-certs" do
       command %Q{
         echo '#{data[:vhosts][1][:key]}' > /data/nginx/ssl/#{app}.key
@@ -289,7 +290,7 @@ if_app_needs_recipe("nginx") do |app,data,index|
       }
       not_if { data[:vhosts][1][:crt].empty? && data[:vhosts][1][:key].empty? }
     end
-    
+
     execute "generate-self-signed-cert" do
       command %Q{
         openssl req -x509 -days 365 -newkey rsa:1024 -nodes \
@@ -297,8 +298,8 @@ if_app_needs_recipe("nginx") do |app,data,index|
           -keyout /data/nginx/ssl/#{app}.key -out /data/nginx/ssl/#{app}.crt
       }
       creates "/data/nginx/ssl/#{app}.key"
-    end  
-  
+    end
+
     managed_template "/data/nginx/servers/#{app}.ssl.conf" do
       owner node[:owner_name]
       group node[:owner_name]
@@ -323,22 +324,22 @@ if_app_needs_recipe("nginx") do |app,data,index|
         :fcgi_instance_count => fcgi_service[:fcgi_instance_count],
       }.merge(node[:members] ? {:https_bind_port => 444} : {}))
     end
-  
+
   else
     execute "ensure-no-old-ssl-vhosts-for-#{app}" do
       command %Q{
         rm -f /data/nginx/servers/#{app}.ssl.conf;true
       }
     end
-  end  
-  
+  end
+
 end
 
 if any_app_needs_recipe?("nginx")
-  
+
   execute "restart-nginx" do
     command "/etc/init.d/nginx restart"
     action :run
   end
-  
-end  
+
+end

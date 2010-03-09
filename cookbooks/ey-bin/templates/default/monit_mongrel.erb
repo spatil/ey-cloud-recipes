@@ -42,7 +42,7 @@ mdk_mongrel() {
       #Does it still exist!?!  Atleast give some log love alerting us that it failed
       if [ -e /proc/$OLDPID ]; then
         #Alert someone? and exit with an error
-        echo "Process $OLDPID won't die!" >> /var/log/engineyard/mongrel/$APPLICATION/mongrel.$PORT.log 2>&1
+        echo "Process $OLDPID won't die!" >> /var/log/engineyard/apps/$APPLICATION/mongrel.$PORT.log 2>&1
         exit 1
       fi
     fi

@@ -67,7 +67,7 @@ end
 (node[:removed_applications]||[]).each do |app|
   execute "remove-old-apache-vhosts-for-#{app}" do
     command %Q{
-      rm -rf /var/log/engineyard/#{app} /etc/apache2/vhosts.d/0*_#{app}_vhost.conf /etc/apache2/vhosts.d/0*_#{app}_ssl_vhost.conf
+      rm -rf /etc/apache2/vhosts.d/0*_#{app}_vhost.conf /etc/apache2/vhosts.d/0*_#{app}_ssl_vhost.conf
     }
   end
 end

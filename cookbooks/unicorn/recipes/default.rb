@@ -29,10 +29,6 @@ if any_app_needs_recipe?('unicorn')
     mode 0755
   end
 
-  logrotate "unicorn" do
-    files "/var/log/engineyard/unicorn/*/*.log"
-    copy_then_truncate true
-  end
 end
 
 if_app_needs_recipe("unicorn") do |app,data,index|
@@ -60,16 +56,6 @@ if_app_needs_recipe("unicorn") do |app,data,index|
     variables({
       :app_type => app_type
     })
-  end
-
-  directory "/var/log/engineyard/unicorn/#{app}" do
-    owner node[:owner_name]
-    group node[:owner_name]
-    mode 0755
-  end
-
-  link "/data/#{app}/shared/log" do
-    to "/var/log/engineyard/unicorn/#{app}"
   end
 
   directory "/var/run/unicorn/#{app}" do

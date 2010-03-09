@@ -17,6 +17,10 @@ execute "clearing old crons" do
   command "crontab -r; crontab -r -u #{node[:owner_name]}; true"
 end
 
+execute "add resin PATH to cron" do
+  command %{echo "PATH=/bin:/usr/bin:/usr/local/ey_resin/bin" > /tmp/newcronforresinpath; crontab /tmp/newcronforresinpath && rm /tmp/newcronforresinpath}
+  not_if 'crontab -l | grep -q "^PATH"'
+end
 
 cron_hour = if node[:backup_interval].to_s == '24'
               "1"    # 0100 Pacific, per support's request

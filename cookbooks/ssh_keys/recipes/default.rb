@@ -31,7 +31,10 @@ end
 
   ruby_block "copy-ssh-keys-for-#{ssh_owner}" do
     block do
-      keys = node[:user_ssh_key] + [node[:admin_ssh_key]]
+      keys = Array(node[:user_ssh_key])
+      keys << node[:admin_ssh_key]
+      keys << %|from="#{node.cluster.join(",")}" #{node[:internal_ssh_public_key]}|
+
       File.open("#{ssh_dir}/authorized_keys.tmp", 'w') do |temp_key_file|
         keys.each do |key|
           temp_key_file.write(key.chomp)
@@ -54,4 +57,9 @@ end
       File.rename("#{ssh_dir}/authorized_keys.tmp", "#{ssh_dir}/authorized_keys")
     end
   end
+end
+
+execute "setup internal ssh key" do
+  command "echo '#{node[:internal_ssh_private_key]}' > /home/#{node[:owner_name]}/.ssh/internal"
+  not_if Proc.new{File.exists?("/home/#{node[:owner_name]}/.ssh/internal")}
 end

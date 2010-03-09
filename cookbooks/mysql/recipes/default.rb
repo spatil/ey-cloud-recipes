@@ -30,6 +30,12 @@ managed_template "/etc/mysql/my.cnf" do
   })
 end
 
+directory '/etc/mysql.d' do
+  owner 'root'
+  group 'root'
+  mode 0755
+end
+
 directory "/mnt/mysql/tmp" do
   owner "mysql"
   group "mysql"

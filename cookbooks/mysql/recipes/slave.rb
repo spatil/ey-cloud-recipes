@@ -3,6 +3,7 @@ wait_for_master_db node[:db_host] do
 end
 
 mysql_slave node[:db_host] do
+  require 'yaml'
   password node[:owner_pass]
   creds = YAML.load_file("/etc/.ey-cloud.yml")
   aws_secret_key creds[:aws_secret_key]
