@@ -11,6 +11,11 @@ logger Logger.new("log/unicorn.log")
 # Load the app into the master before forking workers for super-fast worker spawn times
 preload_app true
 
+# some applications/frameworks log to stderr or stdout, so prevent
+# them from going to /dev/null when daemonized here:
+stderr_path "log/unicorn.stderr.log"
+stdout_path "log/unicorn.stdout.log"
+
 # REE - http://www.rubyenterpriseedition.com/faq.html#adapt_apps_for_cow
 if GC.respond_to?(:copy_on_write_friendly=)
   GC.copy_on_write_friendly = true

@@ -74,6 +74,7 @@ if_app_needs_recipe("unicorn") do |app,data,index|
     variables({
       :unicorn_instance_count => unicorn_instance_count,
       :app => app,
+      :type => app_type,
       :user => node[:owner_name]
     })
     source "unicorn.rb.erb"
