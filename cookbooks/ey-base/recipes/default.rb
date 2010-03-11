@@ -168,6 +168,7 @@ else
     require_recipe "unicorn"   if unicorn?
     require_recipe "app-logs"
     require_recipe "memcached"
+    require_recipe "thinking_sphinx"
     require_recipe "cron"
     require_recipe "passenger" if passenger?
     require_recipe "deploy"
@@ -183,6 +184,7 @@ else
     require_recipe "mongrel"   if mongrel?
     require_recipe "unicorn"   if unicorn?
     require_recipe "app-logs"
+    require_recipe "thinking_sphinx"
     require_recipe "memcached"
     require_recipe "cron"
     require_recipe "passenger" if passenger?
