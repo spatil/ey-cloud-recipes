@@ -1,0 +1,264 @@
+#
+# Config file for collectd(1).
+# Please read collectd.conf(5) for a list of options.
+# http://collectd.org/
+#
+
+#Hostname    "localhost"
+FQDNLookup   true
+BaseDir     "/opt/collectd/var/lib/collectd"
+PIDFile     "/opt/collectd/var/run/collectd.pid"
+PluginDir   "/opt/collectd/lib/collectd"
+#TypesDB     "/opt/collectd/lib/collectd/types.db"
+Interval     30
+#ReadThreads  5
+
+LoadPlugin logfile
+LoadPlugin syslog
+
+#LoadPlugin apache
+LoadPlugin cpu
+LoadPlugin df
+LoadPlugin disk
+#LoadPlugin filecount
+LoadPlugin interface
+LoadPlugin load
+LoadPlugin memcached
+LoadPlugin memory
+LoadPlugin mysql
+#LoadPlugin network
+#LoadPlugin nginx
+#LoadPlugin postgresql
+#LoadPlugin processes
+LoadPlugin rrdtool
+LoadPlugin swap
+LoadPlugin exec
+#LoadPlugin tail
+LoadPlugin tcpconns
+#LoadPlugin unixsock
+
+#<Plugin apache>
+#	URL "http://localhost/status?auto"
+#	User "www-user"
+#	Password "secret"
+#	CACert "/etc/ssl/ca.crt"
+#</Plugin>
+
+#<Plugin df>
+#	Device "/dev/hda1"
+#	Device "192.168.0.2:/mnt/nfs"
+#	MountPoint "/home"
+#	FSType "ext3"
+#	IgnoreSelected false
+#</Plugin>
+
+#<Plugin disk>
+#	Disk "/^[hs]d[a-f][0-9]?$/"
+#	IgnoreSelected false
+#</Plugin>
+
+#<Plugin filecount>
+#	<Directory "/path/to/dir">
+#		Instance "foodir"
+#		Name "*.conf"
+#		MTime "-5m"
+#		Size "+10k"
+#	</Directory>
+#</Plugin>
+
+
+#<Plugin interface>
+#	Interface "eth0"
+#	IgnoreSelected false
+#</Plugin>
+
+<% if @memcached %>
+<Plugin memcached>
+	Host "127.0.0.1"
+	Port "11211"
+</Plugin>
+<% end %>
+
+<Plugin mysql>
+	Host "localhost"
+	User "root"
+	Password "<%= @node[:owner_pass] %>"
+	<% @databases.each do |db| %>
+	<%= "Database \"#{db}\"" %>
+	<% end %>
+</Plugin>
+
+
+#<Plugin network>
+#	Server "ff18::efc0:4a42" "25826"
+#	Server "239.192.74.66" "25826"
+#	Listen "ff18::efc0:4a42" "25826"
+#	Listen "239.192.74.66" "25826"
+#	TimeToLive "128"
+#	Forward false
+#	CacheFlush 1800
+#</Plugin>
+
+#<Plugin nginx>
+#	URL "http://localhost/status?auto"
+#	User "www-user"
+#	Password "secret"
+#	CACert "/etc/ssl/ca.crt"
+#</Plugin>
+
+#<Plugin notify_email>
+#       SMTPServer "localhost"
+#	SMTPPort 25
+#	SMTPUser "my-username"
+#	SMTPPassword "my-password"
+#	From "collectd@main0server.com"
+#	# <WARNING/FAILURE/OK> on <hostname>. beware! do not use not more than two %s in this string!!!
+#	Subject "Aaaaaa!! %s on %s!!!!!"
+#	Recipient "email1@domain1.net"
+#	Recipient "email2@domain2.com"
+#</Plugin>
+
+#<Plugin postgresql>
+#	<Query magic>
+#		Query "SELECT magic, spells FROM wizard WHERE host = $1;"
+#		Param hostname
+#		Column gauge magic
+#		Column counter spells
+#	</Query>
+#
+#	<Database foo>
+#		Host "hostname"
+#		Port 5432
+#		User "username"
+#		Password "secret"
+#
+#		SSLMode "prefer"
+#		KRBSrvName "kerberos_service_name"
+#
+#		Query magic
+#	</Database>
+#
+#	<Database bar>
+#		Service "service_name"
+#	</Database>
+#</Plugin>
+
+#<Plugin processes>
+#	Process "ruby"
+#	Process "mongrel_rails"
+#	Process "nginx"
+#	Process "mysqld"
+#</Plugin>
+
+<Plugin rrdtool>
+	DataDir "/opt/collectd/var/lib/collectd/rrd"
+	CacheTimeout 120
+	CacheFlush   900
+</Plugin>
+
+#<Plugin "tail">
+#  <File "/var/log/exim4/mainlog">
+#    Instance "exim"
+#    <Match>
+#      Regex "S=([1-9][0-9]*)"
+#      DSType "CounterAdd"
+#      Type "ipt_bytes"
+#      Instance "total"
+#    </Match>
+#    <Match>
+#      Regex "\\<R=local_user\\>"
+#      DSType "CounterInc"
+#      Type "email_count"
+#      Instance "local_user"
+#    </Match>
+#  </File>
+#</Plugin>
+
+<Plugin tcpconns>
+	ListeningPorts false
+	LocalPort "80"
+	LocalPort "443"
+</Plugin>
+
+
+#<Plugin unixsock>
+#	SocketFile "/opt/collectd/var/run/collectd-unixsock"
+#	SocketGroup "collectd"
+#	SocketPerms "0770"
+#</Plugin>
+
+
+# THRESHHOLDS
+
+  <Threshold>
+  <Plugin "load">
+    <Type "load">
+      WarningMin    0.00
+      WarningMax    <%= "%0.2f" % @load_warning %>
+      FailureMin    0.00
+      FailureMax    <%= "%0.2f" % @load_failure %>
+      DataSource "shortterm"
+    </Type>
+  </Plugin>
+  
+  <Plugin "swap">
+    <Type "swap-used">
+      WarningMin    0.00
+      WarningMax    <%= 128.0 * 1024 * 1024 %>
+      FailureMin    0.00
+      FailureMax    <%= 384.0 * 1024 * 1024 %>
+      DataSource "value"
+    </Type>
+  </Plugin>
+
+  <Plugin "df">
+    <Type "df">
+      Instance "root"
+      Invert true
+      WarningMin    0.00
+      WarningMax    <%= 1024.0 * 1024 * 1024 %>
+      FailureMin    0.00
+      FailureMax    <%= 256.0 * 1024 * 1024 %>
+      DataSource "free"
+    </Type>
+  </Plugin>
+
+  <Plugin "df">
+    <Type "df">
+      Instance "db"
+      Invert true
+      WarningMin    0.00
+      WarningMax    <%= 1024.0 * 1024 * 1024 %>
+      FailureMin    0.00
+      FailureMax    <%= 256.0 * 1024 * 1024 %>
+      DataSource "free"
+    </Type>
+  </Plugin>
+  
+  <Plugin "df">
+    <Type "df">
+      Instance "data"
+      Invert true
+      WarningMin    0.00
+      WarningMax    <%= 1024.0 * 1024 * 1024 %>
+      FailureMin    0.00
+      FailureMax    <%= 256.0 * 1024 * 1024 %>
+      DataSource "free"
+    </Type>
+  </Plugin>
+  
+  <Plugin "cpu">
+    <Type "cpu-wait">
+      WarningMin    0.00
+      WarningMax    40.0
+      FailureMin    0.00
+      FailureMax    80.0
+      DataSource "value"
+    </Type>
+  </Plugin>
+
+</Threshold>
+
+<Plugin exec>
+  NotificationExec "<%= @user %>" "<%= @alert_script %>"
+</Plugin>

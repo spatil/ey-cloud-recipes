@@ -1,0 +1,23 @@
+check process unicorn_master_<%= @app %>
+  with pidfile /var/run/engineyard/unicorn_<%= @app %>.pid
+<% if @app_type == "rails" %>
+  start program = "/usr/bin/ruby /usr/bin/unicorn_rails -E <%= @environment %> -c /data/<%= @app %>/shared/config/unicorn.rb"
+<% else %>
+  start program = "/usr/bin/ruby /usr/bin/unicorn -E <%= @environment %> -c /data/<%= @app %>/shared/config/unicorn.rb -D /data/<%= @app %>/current/config.ru"
+<% end %>
+  stop program = "/bin/bash -c '/bin/kill `cat /var/run/engineyard/unicorn_<%= @app %>.pid`'"
+  if mem > 255.0 MB for 2 cycles then restart
+  if cpu > 100% for 2 cycles then restart
+  group unicorn_<%= @app %>
+
+
+<% (0..@unicorn_worker_count).each do |i| %>
+  check process unicorn_<%= @app %>_worker<%= i %>
+  with pidfile /var/run/engineyard/unicorn_worker_<%= @app %>_<%= i %>.pid
+  if mem > 255.0 MB for 2 cycles then stop
+  if cpu > 100% for 2 cycles then stop
+  start program = "/bin/bash -c '/bin/true'"
+  stop program = "/bin/bash -c '/bin/kill `cat /var/run/engineyard/unicorn_worker_<%= @app %>_<%= i %>.pid` && sleep 30 && monit quit'"
+  group unicorn_<%= @app %>
+
+<% end %>

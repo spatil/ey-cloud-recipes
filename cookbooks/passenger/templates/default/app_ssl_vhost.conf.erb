@@ -1,0 +1,28 @@
+Listen <%= @https_bind_port %>
+NameVirtualHost *:<%= @https_bind_port %>
+ 
+<VirtualHost *:<%= @https_bind_port %>>
+  ServerName <%= @domain %>  
+  DocumentRoot <%= @docroot %>
+  <% if @app_type == 'rails' %>
+  RailsBaseURI /
+  PassengerPoolIdleTime 3600
+  RailsEnv '<%= @node[:environment][:framework_env] %>'
+  <% else %>
+  RackEnv '<%= @node[:environment][:framework_env] %>'
+  <% end %>
+  SSLEngine on 
+  SSLCertificateFile <%= @crt %>
+  SSLCertificateKeyFile <%= @key %>
+  <% if @chain %>
+  SSLCertificateChainFile <%= @chain %>
+  <% end %>
+  SSLProtocol all -SSLv2
+  <Directory <%= @docroot %>>
+    ErrorDocument 500 /500.html
+    Options FollowSymLinks
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+  </Directory>
+</VirtualHost>
