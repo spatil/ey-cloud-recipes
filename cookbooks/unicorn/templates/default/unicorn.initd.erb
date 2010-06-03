@@ -1,0 +1,86 @@
+#!/sbin/runscript
+# Copyright 1999-2009 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: $
+
+opts="start stop term reload restart aworker rworker deploy"
+
+depend() {
+        need net
+        use mysql dns logger netmount memcached
+        after sshd
+}
+
+
+UNICORN_PID="/var/run/engineyard/unicorn_${APP_NAME}.pid"
+
+#check if the app is rails or not
+if [ "${APP_TYPE}" = "rails" ]; then
+  UNICORN_EXEC="/usr/bin/unicorn_rails"
+else
+  UNICORN_EXEC="/usr/bin/unicorn"
+fi
+
+
+start() {
+  ebegin "Starting Unicorn for ${APP_NAME} - ${APP_TYPE}"
+  start-stop-daemon --start --quiet --oknodo \
+    --pidfile "${UNICORN_PID}" --chuid $APP_USER\
+    --exec "${UNICORN_EXEC}" \
+    -- -c ${UNICORN_CONF} -E ${APP_ENV} -D <%= "${APP_ROOT}/config.ru" if @app_type == "rack" %>
+  eend $? "Unicorn Master start failed."
+}
+
+stop() {
+  ebegin "Stopping Unicorn for ${APP_NAME}"
+  start-stop-daemon --stop --signal QUIT --quiet --oknodo \
+    --pidfile "${UNICORN_PID}"
+  local ret=$?
+  eend ${ret} "Failed to stop Unicorn for ${APP_NAME}"
+  rm -f "${UNICORN_PID}"
+  return ${ret}
+}
+
+term() {
+  ebegin "Killing Unicorn for ${APP_NAME}"
+  start-stop-daemon --stop --signal TERM --quiet --oknodo \
+    --pidfile "${UNICORN_PID}"
+  local ret=$?
+  eend ${ret} "Failed to kill Unicorn for ${APP_NAME}"
+  rm -f "${UNICORN_PID}"
+  return ${ret}
+}
+
+reload() {
+  ebegin "Reloading Unicorn for ${APP_NAME} - ${APP_TYPE}"
+  start-stop-daemon --stop --signal HUP --oknodo \
+    --pidfile "${UNICORN_PID}"
+  eend $? "Failed to reload Unicorn"
+}
+
+
+aworker() {
+  ebegin "Adding Unicorn worker for ${APP_NAME} - ${APP_TYPE}"
+  start-stop-daemon --stop --signal TTIN --oknodo \
+    --pidfile "${UNICORN_PID}"
+  eend $? "Failed to reload Unicorn"
+}
+
+rworker() {
+  ebegin "Removing Unicorn worker for ${APP_NAME} - ${APP_TYPE}"
+  start-stop-daemon --stop --signal TTOU --oknodo \
+    --pidfile "${UNICORN_PID}"
+  eend $? "Failed to reload Unicorn"
+}
+
+deploy() {
+  if [ -f $UNICORN_PID ] ; then
+  UNICORN_PID2=`cat ${UNICORN_PID}`
+  ebegin "Deploying ${APP_NAME} - ${APP_TYPE} ${UNICORN_PID2}"
+  start-stop-daemon --stop --signal USR2 --oknodo \
+  --pidfile "${UNICORN_PID}"
+  eend $? "Failed to reload Unicorn ${UNICORN_PID2}"
+  else
+  start
+  fi
+}
