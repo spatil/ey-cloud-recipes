@@ -1,4 +1,0 @@
-#!/bin/sh
-# There's a bug in passenger where it needs stringio, but doesn't require it.
-# Last seen in passenger 2.2.10
-exec ruby -r stringio -r yaml -r pathname $*
